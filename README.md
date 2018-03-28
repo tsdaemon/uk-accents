@@ -2,12 +2,12 @@ This repository contains a database of accents for all Ukrainian words and their
 
 To regenerate database, run `chmod +x generate.sh & ./generate.sh`
 
-Database presented in a CSV form with space as a delimiter. Each row contains word and number of character with an accent:
+Database presented in a CSV form with comma delimiter. Each row contains word and number of character with an accent:
 
 ```csv
-абаз 2
-абаза 2
-абазу 2
+абаз,2
+абаза,2
+абазу,2
 ``` 
 
 Characters are counted starting from zero.

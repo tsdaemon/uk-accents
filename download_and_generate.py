@@ -3,6 +3,7 @@ import requests
 from tqdm import tqdm
 import sqlite3
 import re
+import pandas as pd
 
 
 vowel_regex = re.compile('[АЕЄИІЇОУЮЯаеєиіїоуюя]')
@@ -32,7 +33,7 @@ def download(url, dirpath):
     return filepath
 
 
-def generate_accents_for_normal_words(conn, f):
+def generate_accents_for_normal_words(conn):
     query = 'SELECT COUNT(*) ' + \
             'FROM (SELECT DISTINCT n.reestr, f.flex, instr(n.reestr, \'"\')-2 AS accent_position FROM nom AS n ' + \
             'LEFT JOIN flexes AS f ON f.type = n.type ' + \
@@ -49,15 +50,17 @@ def generate_accents_for_normal_words(conn, f):
             'INNER JOIN indents AS i ON i.type = n.type ' + \
             'LEFT JOIN flexes AS f ON f.type = n.type ' + \
             'WHERE n.accent = 0 AND accent_position != -2'
+
+    values = []
     for word, accent_position in tqdm(conn.execute(query), total=count):
         word = word.replace('"', '').replace('%', '').replace('*', '').replace('^', '').replace(
             'empty_', '')
-        f.write('{} {}\n'.format(word, accent_position))
+        values.append((word, accent_position))
 
-    return count
+    return values
 
 
-def generate_accents_for_single_vowel_words(conn, f):
+def generate_accents_for_single_vowel_words(conn):
     query = 'SELECT COUNT(*) ' + \
             'FROM (SELECT DISTINCT n.reestr, f.flex, instr(n.reestr, \'"\')-2 AS accent_position FROM nom AS n ' + \
             'LEFT JOIN flexes AS f ON f.type = n.type ' + \
@@ -75,17 +78,18 @@ def generate_accents_for_single_vowel_words(conn, f):
             'LEFT JOIN flexes AS f ON f.type = n.type ' + \
             'WHERE n.accent = 0 AND accent_position = -2'
 
+    values = []
     for word, accent_position in tqdm(conn.execute(query), total=count):
         word = word.replace('"', '').replace('%', '').replace('*', '').replace('^', '').replace(
             'empty_', '')
         vowel = vowel_regex.search(word)
         if vowel is not None:
-            f.write('{} {}\n'.format(word, vowel.start()))
+            values.append((word, vowel.start()))
 
-    return count
+    return values
 
 
-def generate_accents_for_not_normal_words(conn, f):
+def generate_accents_for_not_normal_words(conn):
     query = 'SELECT COUNT(*) ' + \
             'FROM (SELECT DISTINCT n.reestr, f.flex FROM nom AS n ' + \
             'LEFT JOIN flexes AS f ON f.type = n.type ' + \
@@ -105,6 +109,7 @@ def generate_accents_for_not_normal_words(conn, f):
             'LEFT JOIN accent as a ON a.gram = f.field2 AND a.accent_type = n.accent ' + \
             'WHERE n.accent != 0'
 
+    values = []
     for original, word, accent, indent in tqdm(conn.execute(query), total=count):
         word = word.replace('"', '').replace('%', '').replace('*', '').replace('^', '').replace(
             'empty_', '')
@@ -112,13 +117,13 @@ def generate_accents_for_not_normal_words(conn, f):
         if accent == -2:
             vowel = vowel_regex.search(word)
             if vowel is not None:
-                f.write('{} {}\n'.format(word, vowel.start() + indent))
+                values.append((word, vowel.start() + indent))
             else:
                 continue
         else:
-            f.write('{} {}\n'.format(word, accent + indent))
+            values.append((word, accent + indent))
 
-    return count
+    return values
 
 
 if __name__ == "__main__":
@@ -133,21 +138,23 @@ if __name__ == "__main__":
     if not os.path.exists(database_name):
         download(db_url, data_dir)
 
-    out_name = os.path.join(data_dir, 'accents.csv')
-    f = open(out_name, mode='w')
     conn = sqlite3.connect(database_name)
-    count = 0
+    values = []
 
     print('Extracting accents for multi-vowel normal form lexems...')
-    count += generate_accents_for_normal_words(conn, f)
+    values += generate_accents_for_normal_words(conn)
 
     print('Extracting accents for single-vowel normal form lexems...')
-    count += generate_accents_for_single_vowel_words(conn, f)
+    values += generate_accents_for_single_vowel_words(conn)
 
     print('Extracting accents for not normal form lexems...')
-    count += generate_accents_for_not_normal_words(conn, f)
+    values += generate_accents_for_not_normal_words(conn)
 
-    print('Done. Total lexical forms: {}'.format(count))
+    print('Done. Total lexical forms: {}'.format(len(values)))
+
+    out_name = os.path.join(data_dir, 'accents.csv')
+    df = pd.DataFrame(data=values, columns=['Word', 'Accent index'])
+    df.to_csv(out_name, index=False)
 
 
 
